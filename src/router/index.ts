@@ -22,15 +22,9 @@ const router = createRouter({
       component: () => import('@/views/RegisterView.vue')
     },
     {
-      path: '/explore',
-      name: 'explore',
-      component: () => import('@/views/ExploreView.vue'),
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/history',
-      name: 'history',
-      component: () => import('@/views/HistoryView.vue'),
+      path: '/chat/:sessionId?',
+      name: 'chat',
+      component: () => import('@/views/ChatView.vue'),
       meta: { requiresAuth: true }
     }
   ]
