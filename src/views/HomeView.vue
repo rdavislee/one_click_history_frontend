@@ -28,12 +28,12 @@
         <div v-else class="chats-list">
           <div
             v-for="chat in chats"
-            :key="chat.sessionId"
+            :key="chat._id"
             class="chat-item"
-            @click="loadChat(chat.sessionId)"
+            @click="loadChat(chat)"
           >
             <div class="chat-item-title">{{ chat.mainLocation }}</div>
-            <div class="chat-item-date">{{ formatDate(chat.timestamp) }}</div>
+            <div class="chat-item-date">{{ formatDate(chat.createdAt) }}</div>
           </div>
         </div>
       </aside>
@@ -160,9 +160,9 @@ const loadChats = async () => {
     const result = await chatService.getUserChats(authStore.userId)
     // Filter out any invalid chats and sort by timestamp, most recent first
     chats.value = result
-      .filter(chat => chat.sessionId && chat.timestamp && chat.mainLocation)
+      .filter(chat => chat._id && chat.createdAt && chat.mainLocation)
       .sort((a, b) => 
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       )
   } catch (err) {
     chatError.value = 'Failed to load chats'
@@ -244,11 +244,17 @@ const handleStartChat = () => {
   })
 }
 
-const loadChat = (sessionId: string) => {
-  // Navigate to chat view with session ID
+const loadChat = (chat: ChatSession) => {
+  // Navigate to chat view with chat data
   router.push({
     name: 'chat',
-    params: { sessionId }
+    query: {
+      sessionId: chat._id,
+      mainLocation: chat.mainLocation || '',
+      lat: chat.centerLocation.lat.toString(),
+      lng: chat.centerLocation.lng.toString(),
+      radius: chat.radius.toString()
+    }
   })
 }
 

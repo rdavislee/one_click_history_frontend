@@ -52,10 +52,15 @@ export const historyService = {
     })
   },
 
-  async getChat(locationName: string): Promise<unknown> {
-    return await apiService.post('/AIHistoricalContextAgent/_getChat', {
-      locationName
+  async getChat(userId: string, mainLocation: string): Promise<any> {
+    const response = await apiService.post<{ request: string; context: any[] }>('/AIHistoricalContextAgent/_getChat', {
+      user: userId,
+      mainLocation
     })
+    console.log('[historyService.getChat] Full response:', response)
+    console.log('[historyService.getChat] response.context:', response.context)
+    console.log('[historyService.getChat] response JSON:', JSON.stringify(response, null, 2))
+    return response.context
   }
 }
 

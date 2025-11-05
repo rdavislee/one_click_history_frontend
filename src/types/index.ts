@@ -11,12 +11,12 @@ export interface User {
 }
 
 export interface ChatSession {
-  sessionId: string
+  _id: string
   user: string
-  location: Coordinates
+  centerLocation: Coordinates
   radius: number
-  mainLocation: string
-  timestamp: string
+  mainLocation: string | null
+  createdAt: string
 }
 
 export interface HistoricalContext {

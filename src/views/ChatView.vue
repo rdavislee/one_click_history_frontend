@@ -24,7 +24,7 @@
           <p>Click "Generate Context" to start exploring this location's history.</p>
         </div>
 
-        <div v-if="loading" class="generating-state">
+        <div v-if="loading && !context" class="generating-state">
           <div class="spinner"></div>
           <p>Generating historical context...</p>
         </div>
@@ -123,12 +123,13 @@ onMounted(async () => {
 })
 
 const initializeChat = async () => {
-  const sessionId = route.params.sessionId as string | undefined
+  const sessionId = route.query.sessionId as string | undefined
+  const mainLocation = route.query.mainLocation as string | undefined
 
-  if (sessionId) {
+  if (sessionId && mainLocation) {
     // Load existing chat
-    await loadExistingChat(sessionId)
-  } else {
+    await loadExistingChat(sessionId, mainLocation)
+  } else if (!sessionId) {
     // New chat from coordinates
     const lat = parseFloat(route.query.lat as string)
     const lng = parseFloat(route.query.lng as string)
@@ -145,42 +146,124 @@ const initializeChat = async () => {
 
     // Auto-generate context for new chats
     await handleGenerate()
+  } else {
+    initError.value = 'Missing required parameters to load chat'
   }
 }
 
-const loadExistingChat = async (sessionId: string) => {
+const loadExistingChat = async (sessionId: string, mainLocation: string) => {
   if (!authStore.userId) return
 
   initializing.value = true
   initError.value = ''
 
   try {
-    // First, get the chat metadata from the ledger
-    const chatSession = await chatService.getChat(sessionId, authStore.userId)
+    // Set location data from query params
+    const lat = parseFloat(route.query.lat as string)
+    const lng = parseFloat(route.query.lng as string)
+    const rad = parseInt(route.query.radius as string)
     
-    // Set the location data
-    latitude.value = chatSession.location.lat
-    longitude.value = chatSession.location.lng
-    radius.value = chatSession.radius
-
-    // Then, get the full conversation history from the AI agent
-    // According to the API docs, we need to use _getChat with locationName
-    const chatData = await historyService.getChat(chatSession.mainLocation)
-    
-    // Parse the chat history (structure depends on backend implementation)
-    // For now, we'll set up the basic context
-    context.value = {
-      context: '', // Will be populated from chat history
-      mainLocation: chatSession.mainLocation,
-      sessionId: sessionId
+    if (!isNaN(lat) && !isNaN(lng) && !isNaN(rad)) {
+      latitude.value = lat
+      longitude.value = lng
+      radius.value = rad
     }
 
-    // Note: The actual implementation of loading full chat history depends on
-    // what the backend returns. We may need to adjust this based on the actual response.
-    console.log('Loaded chat data:', chatData)
+    // Get the full conversation history from the AI agent
+    const chatData = await historyService.getChat(authStore.userId, mainLocation)
     
-    // TODO: Parse chatData to populate context.value.context and answers.value
-    // This will depend on the backend's response format
+    console.log('Loaded chat data from AIHistoricalContextAgent:', chatData)
+    console.log('chatData structure:', JSON.stringify(chatData, null, 2))
+    
+    // Parse the chat history based on backend response format
+    // Backend returns: [{ context: Context }] where Context = { conversationHistory: Exchange[], ... }
+    if (Array.isArray(chatData) && chatData.length > 0) {
+      const wrappedContext = chatData[0]
+      console.log('wrappedContext:', wrappedContext)
+      console.log('wrappedContext keys:', Object.keys(wrappedContext))
+      console.log('wrappedContext.context:', wrappedContext.context)
+      
+      // The actual Context object is nested inside
+      const contextData = wrappedContext.context
+      
+      console.log('contextData:', contextData)
+      console.log('contextData keys:', contextData ? Object.keys(contextData) : 'null/undefined')
+      
+      if (!contextData || !contextData.conversationHistory) {
+        console.error('Missing conversationHistory. contextData:', contextData)
+        throw new Error('Invalid chat data structure: missing conversationHistory')
+      }
+      
+      console.log('Context data:', contextData)
+      console.log('Conversation history:', contextData.conversationHistory)
+      
+      // Extract the initial context from the first exchange
+      // conversationHistory is an array of Exchange objects with { prompt, response }
+      const conversationHistory = contextData.conversationHistory
+      
+      // The first exchange should be the AI's initial historical context
+      let contextString = ''
+      if (conversationHistory.length > 0) {
+        const firstExchange = conversationHistory[0]
+        console.log('First exchange:', firstExchange)
+        
+        // The response contains a JSON string wrapped in markdown code blocks
+        if (firstExchange.response) {
+          try {
+            // Extract JSON from markdown code block (```json ... ```)
+            const jsonMatch = firstExchange.response.match(/```json\s*([\s\S]*?)\s*```/)
+            if (jsonMatch && jsonMatch[1]) {
+              const parsedResponse = JSON.parse(jsonMatch[1])
+              contextString = parsedResponse.context || ''
+              console.log('Extracted context:', contextString)
+            } else {
+              // Fallback: try to parse the entire response as JSON
+              const parsedResponse = JSON.parse(firstExchange.response)
+              contextString = parsedResponse.context || ''
+            }
+          } catch (err) {
+            console.error('Failed to parse context from response:', err)
+            // Fallback: use the raw response
+            contextString = firstExchange.response
+          }
+        }
+      }
+      
+      context.value = {
+        context: contextString,
+        mainLocation: mainLocation,
+        sessionId: sessionId
+      }
+      
+      // Parse Q&A history from subsequent exchanges
+      // Each subsequent exchange has both the question and answer
+      // Note: First exchange uses "prompt", Q&A exchanges use "question"
+      const qaHistory = []
+      for (let i = 1; i < conversationHistory.length; i++) {
+        const exchange = conversationHistory[i]
+        
+        // Q&A exchanges have "question" and "response" fields
+        if (exchange.question && exchange.response) {
+          qaHistory.push({
+            question: exchange.question,
+            answer: exchange.response
+          })
+        }
+      }
+      console.log('Parsed Q&A history:', qaHistory)
+      answers.value = qaHistory
+      
+    } else if (chatData && typeof chatData === 'object' && 'error' in chatData) {
+      throw new Error(chatData.error as string)
+    } else {
+      // No chat history found
+      console.warn('No chat history found or unexpected format:', chatData)
+      context.value = {
+        context: '',
+        mainLocation: mainLocation,
+        sessionId: sessionId
+      }
+    }
     
   } catch (err) {
     initError.value = err instanceof Error ? err.message : 'Failed to load chat session'

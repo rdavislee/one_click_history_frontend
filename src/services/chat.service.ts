@@ -20,19 +20,19 @@ export const chatService = {
   },
 
   async getUserChats(userId: string): Promise<ChatSession[]> {
-    const response = await apiService.post<ChatSession[]>(
+    const response = await apiService.post<{ request: string; chats: ChatSession[] }>(
       '/LocationChatLedger/_getUserChats',
       { user: userId }
     )
-    return response
+    return response.chats
   },
 
   async getChat(sessionId: string, userId: string): Promise<ChatSession> {
-    const response = await apiService.post<ChatSession>(
+    const response = await apiService.post<{ request: string; chat: ChatSession }>(
       '/LocationChatLedger/_getChat',
       { sessionId, user: userId }
     )
-    return response
+    return response.chat
   }
 }
 
